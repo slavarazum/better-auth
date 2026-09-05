@@ -77,6 +77,18 @@ export const { fetchAuthQuery } = convexBetterAuthReactStart({
 
 </Tabs>
 
+When a request made with a cached JWT fails, the error is checked with
+`isAuthError`. If it is auth related the JWT is refetched and the request is
+retried once, since a cached JWT can be revoked or rotated before it expires.
+Errors that aren't auth related, and any failure using a freshly fetched JWT,
+are rethrown without a retry.
+
+<Callout>
+  `isAuthError` gates a retry, and `fetchAuthMutation` and `fetchAuthAction` are
+  retried too. Match it narrowly enough that it can't fire on your own
+  application errors, or a mutation could run twice.
+</Callout>
+
 ## Static JWKS
 
 **Faster page loads, navigation, and client readiness by speeding up Convex

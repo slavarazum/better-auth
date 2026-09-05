@@ -112,10 +112,12 @@ export const convexBetterAuthReactStart = (
     try {
       return await fn(token?.token);
     } catch (error) {
+      // Only a cached (cookie) JWT can be stale, and only an auth error means
+      // staleness is the likely cause - refetch the JWT and retry once.
       if (
         !opts?.jwtCache?.enabled ||
         token.isFresh ||
-        opts.jwtCache?.isAuthError(error)
+        !opts.jwtCache?.isAuthError(error)
       ) {
         throw error;
       }
