@@ -251,3 +251,21 @@ authorized redirect URI would look like:
 ```
 https://adjective-animal-123.convex.site/api/auth/callback/google
 ```
+
+### OAuth state check
+
+Better Auth normally checks that OAuth sign-in finishes in the browser that
+started it. In a cross domain setup, the plugin skips this check by default. Set
+`preventOAuthCSRF` to turn it back on.
+
+```ts title="convex/auth.ts"
+crossDomain({ siteUrl, preventOAuthCSRF: true }),
+```
+
+Use it when OAuth sign-in starts and finishes on the same domain, for example,
+both on `app.example.com`. This is the usual setup for a React SPA or an Expo
+web app.
+
+Leave it off if sign-in moves between domains, such as from `example.com` to
+`app.example.com`, or if something other than `crossDomainClient` completes it,
+like your own server route or a native app.

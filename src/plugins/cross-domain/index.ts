@@ -6,7 +6,21 @@ import { oneTimeToken as oneTimeTokenPlugin } from "better-auth/plugins/one-time
 import { z } from "zod";
 import { VERSION } from "../../version.js";
 
-export const crossDomain = ({ siteUrl }: { siteUrl: string }) => {
+export const crossDomain = ({
+  siteUrl,
+  preventOAuthCSRF = false,
+}: {
+  siteUrl: string;
+  /**
+   * Check that OAuth sign-in finishes in the browser that started it, which
+   * this plugin otherwise skips. The check runs when the one-time token is
+   * exchanged.
+   *
+   * Leave it off if sign-in moves between domains, or if something other
+   * than `crossDomainClient` exchanges the token.
+   */
+  preventOAuthCSRF?: boolean;
+}) => {
   const oneTimeToken = oneTimeTokenPlugin();
 
   const rewriteCallbackURL = (callbackURL?: string) => {
@@ -168,6 +182,22 @@ export const crossDomain = ({ siteUrl }: { siteUrl: string }) => {
             }
             const token = generateRandomString(32);
             const expiresAt = new Date(Date.now() + 3 * 60 * 1000);
+            if (
+              preventOAuthCSRF &&
+              !ctx.path?.startsWith("/magic-link/verify")
+            ) {
+              // Bind the token to the OAuth state its sign-in started with
+              const state = ctx.query?.state;
+              if (typeof state !== "string") {
+                ctx.context.logger.error("No OAuth state found");
+                return;
+              }
+              await ctx.context.internalAdapter.createVerificationValue({
+                value: state,
+                identifier: `one-time-token-state:${token}`,
+                expiresAt,
+              });
+            }
             await ctx.context.internalAdapter.createVerificationValue({
               value: session.session.token,
               identifier: `one-time-token:${token}`,
@@ -195,6 +225,22 @@ export const crossDomain = ({ siteUrl }: { siteUrl: string }) => {
           }),
         },
         async (ctx) => {
+          // Checked before the token is consumed, so a failed attempt can't
+          // spend or unbind it
+          const binding = preventOAuthCSRF
+            ? await ctx.context.internalAdapter.findVerificationValue(
+                `one-time-token-state:${ctx.body.token}`
+              )
+            : null;
+          if (binding) {
+            const state = await ctx.getSignedCookie(
+              ctx.context.createAuthCookie("state").name,
+              ctx.context.secret
+            );
+            if (state !== binding.value) {
+              throw ctx.error("BAD_REQUEST", { message: "Invalid token" });
+            }
+          }
           const response = await oneTimeToken.endpoints.verifyOneTimeToken({
             ...ctx,
             asResponse: false,
